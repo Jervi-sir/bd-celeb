@@ -27,6 +27,32 @@ const POST_TYPING_SCENE_DELAY = 500;
 const CURSOR_BLINK_INTERVAL = 480;
 const AudioPath = "/audio/the-jones-girls-nights-over-egypt.mp3";
 
+const PRELOAD_ASSETS = [
+  "/table.glb",
+  "/picture_frame.glb",
+  "/cake.glb",
+  "/red_cyber_katana.glb",
+  "/candle.glb",
+  "/frame3.gif",
+  "/frame2.jpeg",
+  "/frame1.jpeg",
+  "/letter.jpg",
+  "/shanghai_bund_4k_1_11zon.jpg",
+  AudioPath,
+] as const;
+
+type DownloadProgress = {
+  loaded: number;
+  total: number;
+};
+
+type PreloadState = {
+  loaded: number;
+  total: number;
+  isComplete: boolean;
+  error: string | null;
+};
+
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -34,6 +60,57 @@ const clamp = (value: number, min: number, max: number) =>
 const lerp = (from: number, to: number, t: number) => from + (to - from) * t;
 
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+const formatBytes = (value: number) => {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B";
+  }
+
+  const units = ["B", "KB", "MB", "GB"];
+  const exponent = Math.min(
+    Math.floor(Math.log(value) / Math.log(1024)),
+    units.length - 1
+  );
+  const scaled = value / 1024 ** exponent;
+  const digits = scaled >= 100 || exponent === 0 ? 0 : scaled >= 10 ? 1 : 2;
+  return `${scaled.toFixed(digits)} ${units[exponent]}`;
+};
+
+const preloadAsset = async (
+  assetPath: string,
+  onProgress: (progress: DownloadProgress) => void,
+  signal: AbortSignal
+) => {
+  const response = await fetch(assetPath, { signal, cache: "force-cache" });
+  if (!response.ok) {
+    throw new Error(`Failed to preload ${assetPath}`);
+  }
+
+  const totalHeader = response.headers.get("content-length");
+  const total = totalHeader ? Number.parseInt(totalHeader, 10) : 0;
+  const reader = response.body?.getReader();
+
+  if (!reader) {
+    const buffer = await response.arrayBuffer();
+    const loaded = buffer.byteLength;
+    onProgress({ loaded, total: total || loaded });
+    return;
+  }
+
+  let loaded = 0;
+  onProgress({ loaded: 0, total });
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    loaded += value.byteLength;
+    onProgress({ loaded, total });
+  }
+
+  onProgress({ loaded, total: total || loaded });
+};
 
 type AnimatedSceneProps = {
   isPlaying: boolean;
@@ -385,12 +462,77 @@ export default function App() {
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
   const [volume, setVolume] = useState(0.5);
+  const [preloadState, setPreloadState] = useState<PreloadState>({
+    loaded: 0,
+    total: 0,
+    isComplete: false,
+    error: null,
+  });
   const backgroundAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const assetProgress = new Map<string, DownloadProgress>();
+
+    const syncProgress = () => {
+      let loaded = 0;
+      let total = 0;
+      assetProgress.forEach((progress) => {
+        loaded += progress.loaded;
+        total += progress.total;
+      });
+
+      setPreloadState((current) => ({
+        ...current,
+        loaded,
+        total,
+      }));
+    };
+
+    void Promise.all(
+      PRELOAD_ASSETS.map((assetPath) =>
+        preloadAsset(
+          assetPath,
+          (progress) => {
+            assetProgress.set(assetPath, progress);
+            syncProgress();
+          },
+          controller.signal
+        )
+      )
+    )
+      .then(() => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        syncProgress();
+        setPreloadState((current) => ({
+          ...current,
+          isComplete: true,
+          error: null,
+        }));
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        const message =
+          error instanceof Error ? error.message : "Failed to preload assets";
+        setPreloadState((current) => ({
+          ...current,
+          error: message,
+        }));
+      });
+
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const audio = new Audio(AudioPath);
     audio.loop = true;
-    audio.preload = "auto";
+    audio.preload = "none";
     audio.volume = volume;
     backgroundAudioRef.current = audio;
     return () => {
@@ -539,6 +681,11 @@ export default function App() {
   }, []);
 
   const isScenePlaying = hasStarted && sceneStarted;
+  const totalBytes = preloadState.total || preloadState.loaded;
+  const progressRatio =
+    totalBytes > 0 ? clamp(preloadState.loaded / totalBytes, 0, 1) : 0;
+  const bytesRemaining = Math.max(totalBytes - preloadState.loaded, 0);
+  const isLoadingAssets = !preloadState.isComplete && !preloadState.error;
 
   return (
     <div className="App">
@@ -577,7 +724,32 @@ export default function App() {
       )}
 
       <div className="controls-overlay">
-        {!hasStarted ? (
+        {isLoadingAssets ? (
+          <div className="loading-panel" role="status" aria-live="polite">
+            <div className="loading-panel__eyebrow">Preparing experience</div>
+            <div className="loading-panel__title">Downloading scene assets</div>
+            <div className="loading-panel__bar" aria-hidden="true">
+              <span
+                className="loading-panel__bar-fill"
+                style={{ transform: `scaleX(${progressRatio})` }}
+              />
+            </div>
+            <div className="loading-panel__stats">
+              <span>{formatBytes(preloadState.loaded)} downloaded</span>
+              <span>{formatBytes(totalBytes)} total</span>
+              <span>{formatBytes(bytesRemaining)} left</span>
+            </div>
+            <div className="loading-panel__percent">
+              {Math.round(progressRatio * 100)}%
+            </div>
+          </div>
+        ) : preloadState.error ? (
+          <div className="loading-panel loading-panel--error" role="alert">
+            <div className="loading-panel__eyebrow">Loading issue</div>
+            <div className="loading-panel__title">Asset download failed</div>
+            <div className="loading-panel__message">{preloadState.error}</div>
+          </div>
+        ) : !hasStarted ? (
           <button
             className="start-button"
             onClick={() => {
@@ -610,39 +782,41 @@ export default function App() {
         )}
       </div>
 
-      <Canvas
-        gl={{ alpha: true }}
-        style={{ background: "transparent" }}
-        onCreated={({ gl }) => {
-          gl.setClearColor("#000000", 0);
-        }}
-      >
-        <Suspense fallback={null}>
-          <AnimatedScene
-            isPlaying={isScenePlaying}
-            candleLit={isCandleLit}
-            onBackgroundFadeChange={setBackgroundOpacity}
-            onEnvironmentProgressChange={setEnvironmentProgress}
-            onAnimationComplete={() => setHasAnimationCompleted(true)}
-            cards={BIRTHDAY_CARDS}
-            activeCardId={activeCardId}
-            onToggleCard={handleCardToggle}
-          />
-          <ambientLight intensity={(1 - environmentProgress) * 0.8} />
-          <directionalLight intensity={0.5} position={[2, 10, 0]} color={[1, 0.9, 0.95]} />
-          <Environment
-            files={["/shanghai_bund_4k_1_11zon.jpg"]}
-            backgroundRotation={[0, 3.3, 0]}
-            environmentRotation={[0, 3.3, 0]}
-            background
-            environmentIntensity={0.1 * environmentProgress}
-            backgroundIntensity={0.05 * environmentProgress}
-          />
-          <EnvironmentBackgroundController intensity={0.05 * environmentProgress} />
-          <Fireworks isActive={fireworksActive} origin={[0, 10, 0]} />
-          <ConfiguredOrbitControls />
-        </Suspense>
-      </Canvas>
+      {preloadState.isComplete && (
+        <Canvas
+          gl={{ alpha: true }}
+          style={{ background: "transparent" }}
+          onCreated={({ gl }) => {
+            gl.setClearColor("#000000", 0);
+          }}
+        >
+          <Suspense fallback={null}>
+            <AnimatedScene
+              isPlaying={isScenePlaying}
+              candleLit={isCandleLit}
+              onBackgroundFadeChange={setBackgroundOpacity}
+              onEnvironmentProgressChange={setEnvironmentProgress}
+              onAnimationComplete={() => setHasAnimationCompleted(true)}
+              cards={BIRTHDAY_CARDS}
+              activeCardId={activeCardId}
+              onToggleCard={handleCardToggle}
+            />
+            <ambientLight intensity={(1 - environmentProgress) * 0.8} />
+            <directionalLight intensity={0.5} position={[2, 10, 0]} color={[1, 0.9, 0.95]} />
+            <Environment
+              files={["/shanghai_bund_4k_1_11zon.jpg"]}
+              backgroundRotation={[0, 3.3, 0]}
+              environmentRotation={[0, 3.3, 0]}
+              background
+              environmentIntensity={0.1 * environmentProgress}
+              backgroundIntensity={0.05 * environmentProgress}
+            />
+            <EnvironmentBackgroundController intensity={0.05 * environmentProgress} />
+            <Fireworks isActive={fireworksActive} origin={[0, 10, 0]} />
+            <ConfiguredOrbitControls />
+          </Suspense>
+        </Canvas>
+      )}
     </div>
   );
 }

@@ -22,6 +22,10 @@ body {
   overflow: hidden;
   position: relative;
   background: #0b0212;
+  background-image:
+    radial-gradient(circle at top, rgba(252, 190, 92, 0.14), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(150, 56, 255, 0.1), transparent 28%),
+    linear-gradient(180deg, #12041b 0%, #06010b 100%);
 }
 
 canvas {
@@ -99,6 +103,82 @@ canvas {
   align-items: center;
   z-index: 100;
   pointer-events: none;
+}
+
+.loading-panel {
+  pointer-events: auto;
+  width: min(92vw, 480px);
+  padding: 1.5rem;
+  border-radius: 28px;
+  color: #fff6eb;
+  background: rgba(12, 4, 18, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  display: grid;
+  gap: 0.9rem;
+}
+
+.loading-panel__eyebrow,
+.loading-panel__stats,
+.loading-panel__percent,
+.loading-panel__message {
+  font-family: "Courier New", Courier, monospace;
+}
+
+.loading-panel__eyebrow {
+  font-size: 0.78rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: rgba(255, 233, 206, 0.68);
+}
+
+.loading-panel__title {
+  font-size: clamp(1.35rem, 2.6vw, 2rem);
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+.loading-panel__bar {
+  width: 100%;
+  height: 14px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.loading-panel__bar-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #ffb84d 0%, #ff7a59 55%, #ffe8a3 100%);
+  box-shadow: 0 0 24px rgba(255, 161, 79, 0.5);
+  transition: transform 180ms ease-out;
+}
+
+.loading-panel__stats {
+  display: grid;
+  gap: 0.35rem;
+  color: rgba(255, 237, 215, 0.82);
+  font-size: 0.9rem;
+}
+
+.loading-panel__percent {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.loading-panel__message {
+  color: rgba(255, 237, 215, 0.82);
+  line-height: 1.5;
+}
+
+.loading-panel--error {
+  border-color: rgba(255, 120, 120, 0.3);
 }
 
 .start-button {
@@ -260,6 +340,27 @@ canvas {
 
 .blow-out-button:active {
   transform: translateY(0) scale(0.98);
+}
+
+@media (max-width: 640px) {
+  .loading-panel {
+    padding: 1.2rem;
+    border-radius: 22px;
+  }
+
+  .loading-panel__stats {
+    font-size: 0.82rem;
+  }
+
+  .music-toggle {
+    top: 1rem;
+    right: 1rem;
+  }
+
+  .volume-control {
+    top: 4.8rem;
+    right: 1rem;
+  }
 }
 
 @keyframes pulse-border {
