@@ -681,9 +681,11 @@ export default function App() {
   }, []);
 
   const isScenePlaying = hasStarted && sceneStarted;
-  const totalBytes = preloadState.total || preloadState.loaded;
-  const progressRatio =
-    totalBytes > 0 ? clamp(preloadState.loaded / totalBytes, 0, 1) : 0;
+  const totalMB = 20;
+  const totalBytes = totalMB * 1024 * 1024;
+  const progressRatio = preloadState.isComplete
+    ? 1
+    : clamp(preloadState.loaded / totalBytes, 0, 1);
   const bytesRemaining = Math.max(totalBytes - preloadState.loaded, 0);
   const isLoadingAssets = !preloadState.isComplete && !preloadState.error;
 
@@ -726,7 +728,7 @@ export default function App() {
       <div className="controls-overlay">
         {isLoadingAssets ? (
           <div className="loading-panel" role="status" aria-live="polite">
-            <div className="loading-panel__eyebrow">Preparing experience</div>
+            <div className="loading-panel__eyebrow">Sorry but you gotta wait for</div>
             <div className="loading-panel__title">Downloading scene assets</div>
             <div className="loading-panel__bar" aria-hidden="true">
               <span
